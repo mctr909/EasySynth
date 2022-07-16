@@ -1,9 +1,11 @@
 #include "dll_main.h"
+#include "effect.h"
 #include <mmsystem.h>
 
 #pragma comment (lib, "winmm.lib")
 
 /******************************************************************************/
+SYSVALUE     mSysValue = { 0 };
 HWAVEOUT     mhWaveOut = NULL;
 WAVEFORMATEX mWaveFmt = { 0 };
 WAVEHDR**    mppWaveHdr = NULL;
@@ -39,10 +41,12 @@ void WINAPI waveout_open(
 ) {
     waveout_close();
     //
-    g_sample_rate = sample_rate;
-    g_delta_time = 1.0 / sample_rate;
-    g_buffer_length = buffer_length;
+    mSysValue.sample_rate = sample_rate;
+    mSysValue.delta_time = 1.0 / sample_rate;
+    mSysValue.buffer_length = buffer_length;
     mBufferCount = buffer_count;
+    //
+    effect_create(&mSysValue);
     //
     if (enable_float) {
         waveOutOpen(writeFloat);
@@ -62,6 +66,8 @@ BOOL waveout_close() {
     }
     waveOutReset(mhWaveOut);
     waveOutClose(mhWaveOut);
+    //
+    effect_dispose(&mSysValue);
     return TRUE;
 }
 
@@ -93,7 +99,7 @@ BOOL waveOutOpen(void(*fpWriteBufferProc)(LPSTR)) {
     mWaveFmt.wFormatTag = fpWriteBufferProc == writeFloat ? 3 : 1;
     mWaveFmt.nChannels = 2;
     mWaveFmt.wBitsPerSample = (WORD)(fpWriteBufferProc == writeFloat ? 32 : 16);
-    mWaveFmt.nSamplesPerSec = (DWORD)g_sample_rate;
+    mWaveFmt.nSamplesPerSec = (DWORD)mSysValue.sample_rate;
     mWaveFmt.nBlockAlign = mWaveFmt.nChannels * mWaveFmt.wBitsPerSample / 8;
     mWaveFmt.nAvgBytesPerSec = mWaveFmt.nSamplesPerSec * mWaveFmt.nBlockAlign;
     // WaveOut Open
@@ -120,11 +126,11 @@ BOOL waveOutOpen(void(*fpWriteBufferProc)(LPSTR)) {
     for (int n = 0; n < mBufferCount; ++n) {
         mppWaveHdr[n] = (WAVEHDR*)calloc(1, sizeof(WAVEHDR));
         auto pWaveHdr = mppWaveHdr[n];
-        pWaveHdr->dwBufferLength = (DWORD)(g_buffer_length * mWaveFmt.nBlockAlign);
+        pWaveHdr->dwBufferLength = (DWORD)(mSysValue.buffer_length * mWaveFmt.nBlockAlign);
         pWaveHdr->dwFlags = WHDR_BEGINLOOP | WHDR_ENDLOOP;
         pWaveHdr->dwLoops = 0;
         pWaveHdr->dwUser = 0;
-        pWaveHdr->lpData = (LPSTR)calloc(g_buffer_length, mWaveFmt.nBlockAlign);
+        pWaveHdr->lpData = (LPSTR)calloc(mSysValue.buffer_length, mWaveFmt.nBlockAlign);
     }
     // Prepare Wave header
     for (int n = 0; n < mBufferCount; ++n) {
@@ -195,7 +201,7 @@ DWORD writeBufferTask(LPVOID* param) {
             }
             // Write Buffer
             auto pBuff = mppWaveHdr[mWriteIndex]->lpData;
-            memset(pBuff, 0, mWaveFmt.nBlockAlign * g_buffer_length);
+            memset(pBuff, 0, mWaveFmt.nBlockAlign * mSysValue.buffer_length);
             mfpWriteBuffer(pBuff);
             mWriteIndex = (mWriteIndex + 1) % mBufferCount;
             mWriteCount++;
@@ -217,26 +223,26 @@ void doStop() {
     }
 }
 
-double mRe = 1.0;
-double mIm = 0.0;
-double mDelta = 2 * 3.141592 * g_delta_time;
-
 void writeShort(LPSTR pData) {
     auto pOutput = (short*)pData;
-    for (int i = 0; i < g_buffer_length; i++, pOutput += 2) {
-        pOutput[0] = (short)(4000 * mRe);
-        pOutput[1] = (short)(4000 * mIm);
-        mRe -= mIm * 220 * mDelta;
-        mIm += mRe * 220 * mDelta;
+    for (int i = 0; i < mSysValue.buffer_length; i++, pOutput += 2) {
+        double ia = 0, ib = 0;
+        double oa = 0, ob = 0;
+        effect(mSysValue.pp_effect[0], &ia, &ib, &oa, &ob);
+
+        pOutput[0] = (short)(32000 * oa);
+        pOutput[1] = (short)(32000 * ob);
     }
 }
 
 void writeFloat(LPSTR pData) {
     auto pOutput = (float*)pData;
-    for (int i = 0; i < g_buffer_length; i++, pOutput += 2) {
-        pOutput[0] = (float)(4000 / 32767.0 * mRe);
-        pOutput[1] = (float)(4000 / 32767.0 * mIm);
-        mRe -= mIm * 220 * mDelta;
-        mIm += mRe * 220 * mDelta;
+    for (int i = 0; i < mSysValue.buffer_length; i++, pOutput += 2) {
+        double ia = 0, ib = 0;
+        double oa = 0, ob = 0;
+        effect(mSysValue.pp_effect[0], &ia, &ib, &oa, &ob);
+
+        pOutput[0] = (float)(32000 / 32767.0 * oa);
+        pOutput[1] = (float)(32000 / 32767.0 * ob);
     }
 }

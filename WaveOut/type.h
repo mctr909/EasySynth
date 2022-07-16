@@ -12,8 +12,14 @@ typedef unsigned short ushort;
 typedef unsigned int   uint;
 
 /******************************************************************************/
-static int    g_buffer_length = 0;
-static int    g_sample_rate = 44100;
-static double g_delta_time = 1.0 / 44100;
+typedef struct EFFECT EFFECT;
+
+/******************************************************************************/
+typedef struct SYSVALUE {
+    int      buffer_length;
+    int      sample_rate;
+    double   delta_time;
+    EFFECT** pp_effect;
+} SYSVALUE;
 
 #endif /* __HEADER_TYPE__ */
