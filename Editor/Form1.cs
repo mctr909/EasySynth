@@ -21,5 +21,9 @@ namespace Editor
         private void Form1_FormClosed(object sender, FormClosedEventArgs e) {
             Sender.WaveClose();
         }
+
+        private void button1_Click(object sender, EventArgs e) {
+            Sender.LoadDLS("C:\\Users\\user\\Desktop\\あいうえお");
+        }
     }
 }

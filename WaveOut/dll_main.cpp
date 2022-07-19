@@ -1,5 +1,6 @@
 #include "dll_main.h"
 #include "effect.h"
+#include "message.h"
 #include <mmsystem.h>
 
 #pragma comment (lib, "winmm.lib")
@@ -11,6 +12,7 @@ WAVEFORMATEX mWaveFmt = { 0 };
 WAVEHDR**    mppWaveHdr = NULL;
 void (*mfpWriteBuffer)(LPSTR) = NULL;
 
+HANDLE           mhThread = NULL;
 DWORD            mThreadId = 0;
 CRITICAL_SECTION mcsBufferLock = { 0 };
 
@@ -24,29 +26,38 @@ int mWriteCount = 0;
 int mWriteIndex = 0;
 int mReadIndex = 0;
 
+double *mpWaveBufferL = NULL;
+double *mpWaveBufferR = NULL;
+
 /******************************************************************************/
 BOOL waveOutOpen(void(*fpWriteBufferProc)(LPSTR));
 void CALLBACK waveOutProc(HWAVEOUT hwo, UINT uMsg, DWORD_PTR dwInstance, DWORD dwParam1, DWORD dwParam);
 DWORD writeBufferTask(LPVOID* param);
 void doStop();
+void write();
 void writeShort(LPSTR pData);
 void writeFloat(LPSTR pData);
 
 /******************************************************************************/
-void WINAPI waveout_open(
-    int sample_rate,
-    int buffer_length,
-    int buffer_count,
-    BOOL enable_float
-) {
+void note_off(byte ch, byte note_num);
+void note_on(byte ch, byte note_num, byte velo);
+void ctrl_chg(byte ch, E_CTRL_TYPE type, byte value);
+void prog_chg(byte ch, byte num);
+void pitch(byte ch, byte lsb, byte msb);
+
+/******************************************************************************/
+void WINAPI waveout_open(int sample_rate, int buffer_length, int buffer_count, BOOL enable_float) {
     waveout_close();
     //
     mSysValue.sample_rate = sample_rate;
     mSysValue.delta_time = 1.0 / sample_rate;
     mSysValue.buffer_length = buffer_length;
     mBufferCount = buffer_count;
-    //
+    // Create
     effect_create(&mSysValue);
+    // Allocate Wave buffer
+    mpWaveBufferL = (double*)malloc(sizeof(double) * buffer_length);
+    mpWaveBufferR = (double*)malloc(sizeof(double) * buffer_length);
     //
     if (enable_float) {
         waveOutOpen(writeFloat);
@@ -62,25 +73,23 @@ BOOL waveout_close() {
     doStop();
     // Unprepare Wave header
     for (int n = 0; n < mBufferCount; ++n) {
+        if (NULL == mppWaveHdr) {
+            break;
+        }
         waveOutUnprepareHeader(mhWaveOut, mppWaveHdr[n], sizeof(WAVEHDR));
     }
     waveOutReset(mhWaveOut);
     waveOutClose(mhWaveOut);
-    //
+    // Dispose
     effect_dispose(&mSysValue);
+    // Release Wave buffer
+    free(mpWaveBufferL);
+    mpWaveBufferL = NULL;
+    free(mpWaveBufferR);
+    mpWaveBufferR = NULL;
     return TRUE;
 }
 
-void WINAPI message_send(byte* pMsg) {
-}
-
-byte* WINAPI dls_load(LPWSTR file_path) {
-    doStop();
-    mDoStop = FALSE;
-    return NULL;
-}
-
-/******************************************************************************/
 BOOL waveOutOpen(void(*fpWriteBufferProc)(LPSTR)) {
     if (NULL != mhWaveOut) {
         if (!waveout_close()) {
@@ -115,12 +124,14 @@ BOOL waveOutOpen(void(*fpWriteBufferProc)(LPSTR)) {
     }
     // Create Wave write Thread
     InitializeCriticalSection((LPCRITICAL_SECTION)&mcsBufferLock);
-    auto hThread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)writeBufferTask, NULL, 0, &mThreadId);
-    if (NULL == hThread) {
+    if (NULL == mhThread) {
+        mhThread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)writeBufferTask, NULL, 0, &mThreadId);
+    }
+    if (NULL == mhThread) {
         waveout_close();
         return FALSE;
     }
-    SetThreadPriority(hThread, THREAD_PRIORITY_HIGHEST);
+    SetThreadPriority(mhThread, THREAD_PRIORITY_HIGHEST);
     // Allocate Wave header
     mppWaveHdr = (WAVEHDR**)calloc(mBufferCount, sizeof(WAVEHDR*));
     for (int n = 0; n < mBufferCount; ++n) {
@@ -217,32 +228,114 @@ void doStop() {
     while (!mWaveOutStopped || !mThreadStopped) {
         Sleep(100);
         elapsedTime++;
-        if (10 < elapsedTime) {
-            return;
+    }
+}
+
+void write() {
+    for (int s = 0; s < SAMPLER_COUNT; s++) {
+    }
+    memset(mpWaveBufferL, 0, sizeof(double) * mSysValue.buffer_length);
+    memset(mpWaveBufferR, 0, sizeof(double) * mSysValue.buffer_length);
+    for (int c = 0; c < CHANNEL_COUNT; c++) {
+        auto pEffect = mSysValue.pp_effect[c];
+        auto pInputL = pEffect->value.p_output_l;
+        auto pInputR = pEffect->value.p_output_r;
+        for (int i = 0; i < mSysValue.buffer_length; i++) {
+            double tempL, tempR;
+            effect(pEffect, pInputL[i], pInputR[i], &tempL, &tempR);
+            mpWaveBufferL[i] += tempL;
+            mpWaveBufferR[i] += tempR;
         }
     }
 }
 
 void writeShort(LPSTR pData) {
+    write();
     auto pOutput = (short*)pData;
-    for (int i = 0; i < mSysValue.buffer_length; i++, pOutput += 2) {
-        double ia = 0, ib = 0;
-        double oa = 0, ob = 0;
-        effect(mSysValue.pp_effect[0], &ia, &ib, &oa, &ob);
-
-        pOutput[0] = (short)(32000 * oa);
-        pOutput[1] = (short)(32000 * ob);
+    for (int i = 0; i < mSysValue.buffer_length; i++) {
+        auto l = mpWaveBufferL[i] * 32767;
+        auto r = mpWaveBufferR[i] * 32767;
+        if (32767 < l) l = 32767;
+        if (l < -32767) l = -32767;
+        if (32767 < r) r = 32767;
+        if (r < -32767) r = -32767;
+        pOutput[0] = (short)l;
+        pOutput[1] = (short)r;
+        pOutput += 2;
     }
 }
 
 void writeFloat(LPSTR pData) {
+    write();
     auto pOutput = (float*)pData;
-    for (int i = 0; i < mSysValue.buffer_length; i++, pOutput += 2) {
-        double ia = 0, ib = 0;
-        double oa = 0, ob = 0;
-        effect(mSysValue.pp_effect[0], &ia, &ib, &oa, &ob);
-
-        pOutput[0] = (float)(32000 / 32767.0 * oa);
-        pOutput[1] = (float)(32000 / 32767.0 * ob);
+    for (int i = 0; i < mSysValue.buffer_length; i++) {
+        pOutput[0] = (float)mpWaveBufferL[i];
+        pOutput[1] = (float)mpWaveBufferR[i];
+        pOutput += 2;
     }
+}
+
+/******************************************************************************/
+byte* WINAPI dls_load(char* file_path) {
+    waveout_close();
+    waveout_open(mSysValue.sample_rate, mSysValue.buffer_length, mBufferCount, mfpWriteBuffer == writeFloat);
+    return NULL;
+}
+
+/******************************************************************************/
+void WINAPI message_send(byte* pMsg) {
+    auto type = (E_MESSSAGE_TYPE)(*pMsg & 0xF0);
+    auto ch = (byte)(*pMsg & 0x0F);
+
+    switch (type) {
+    case E_MESSSAGE_TYPE::NOTE_OFF:
+        note_off(ch, pMsg[1]);
+        break;
+    case E_MESSSAGE_TYPE::NOTE_ON:
+        note_on(ch, pMsg[1], pMsg[2]);
+        break;
+    case E_MESSSAGE_TYPE::CTRL_CHG:
+        ctrl_chg(ch, (E_CTRL_TYPE)pMsg[1], pMsg[2]);
+        break;
+    case E_MESSSAGE_TYPE::PROG_CHG:
+        prog_chg(ch, pMsg[1]);
+        break;
+    case E_MESSSAGE_TYPE::PITCH:
+        pitch(ch, pMsg[1], pMsg[2]);
+        break;
+    case E_MESSSAGE_TYPE::KEY_PRESS:
+    case E_MESSSAGE_TYPE::CH_PRESS:
+    case E_MESSSAGE_TYPE::SYSTEM:
+        break;
+    default:
+        break;
+    }
+}
+
+void note_off(byte ch, byte note_num) {
+    for (int i = 0; i < SAMPLER_COUNT; i++) {
+
+    }
+}
+
+void note_on(byte ch, byte note_num, byte velo) {
+    if (0 == velo) {
+        note_off(ch, note_num);
+        return;
+    }
+    for (int i = 0; i < SAMPLER_COUNT; i++) {
+
+    }
+    for (int i = 0; i < SAMPLER_COUNT; i++) {
+
+    }
+}
+
+void ctrl_chg(byte ch, E_CTRL_TYPE type, byte value) {
+}
+
+void prog_chg(byte ch, byte num) {
+}
+
+void pitch(byte ch, byte lsb, byte msb) {
 }
