@@ -1,0 +1,37 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.34407.143
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EasySynth", "EasySynth\EasySynth.csproj", "{83A98DB8-293A-4FC3-887F-5BF01F5665F9}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WinMM", "WinMM\WinMM.csproj", "{159CD128-7C27-4E6B-87DB-EF4DB8C79F60}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Synth", "Synth\Synth.csproj", "{F8104E97-EDDF-41D8-B45B-D9B49A9B2E3D}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x64 = Debug|x64
+		Release|x64 = Release|x64
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{83A98DB8-293A-4FC3-887F-5BF01F5665F9}.Debug|x64.ActiveCfg = Debug|x64
+		{83A98DB8-293A-4FC3-887F-5BF01F5665F9}.Debug|x64.Build.0 = Debug|x64
+		{83A98DB8-293A-4FC3-887F-5BF01F5665F9}.Release|x64.ActiveCfg = Release|x64
+		{83A98DB8-293A-4FC3-887F-5BF01F5665F9}.Release|x64.Build.0 = Release|x64
+		{159CD128-7C27-4E6B-87DB-EF4DB8C79F60}.Debug|x64.ActiveCfg = Debug|x64
+		{159CD128-7C27-4E6B-87DB-EF4DB8C79F60}.Debug|x64.Build.0 = Debug|x64
+		{159CD128-7C27-4E6B-87DB-EF4DB8C79F60}.Release|x64.ActiveCfg = Release|x64
+		{159CD128-7C27-4E6B-87DB-EF4DB8C79F60}.Release|x64.Build.0 = Release|x64
+		{F8104E97-EDDF-41D8-B45B-D9B49A9B2E3D}.Debug|x64.ActiveCfg = Debug|x64
+		{F8104E97-EDDF-41D8-B45B-D9B49A9B2E3D}.Debug|x64.Build.0 = Debug|x64
+		{F8104E97-EDDF-41D8-B45B-D9B49A9B2E3D}.Release|x64.ActiveCfg = Release|x64
+		{F8104E97-EDDF-41D8-B45B-D9B49A9B2E3D}.Release|x64.Build.0 = Release|x64
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {F5245182-27B9-4C07-8472-9E9AEFDDF1F6}
+	EndGlobalSection
+EndGlobal
