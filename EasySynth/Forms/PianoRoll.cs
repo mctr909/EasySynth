@@ -1,11 +1,12 @@
 ﻿using System;
 using System.Drawing;
 using System.Windows.Forms;
-using Synth;
+using static SMF;
 
 namespace EasySynth.Forms {
 	public partial class PianoRoll : Form {
 		static readonly Font FontOctName = new Font("MS Gothic", 9.0f);
+		static readonly Font FontMeasure = new Font("Meiryo UI", 11.0f);
 		static readonly StringFormat FormatOct = new StringFormat() {
 			Alignment = StringAlignment.Far,
 			LineAlignment = StringAlignment.Center
@@ -73,50 +74,60 @@ namespace EasySynth.Forms {
 			}
 
 			if (時間単位_8分.Checked) {
-				mUnitTick = SMF.UnitTick >> 1;
+				mUnitTick = UnitTick >> 1;
 			}
 			if (時間単位_16分.Checked) {
-				mUnitTick = SMF.UnitTick >> 2;
+				mUnitTick = UnitTick >> 2;
 			}
 			if (時間単位_32分.Checked) {
-				mUnitTick = SMF.UnitTick >> 3;
+				mUnitTick = UnitTick >> 3;
 			}
 			if (時間単位_64分.Checked) {
-				mUnitTick = SMF.UnitTick >> 4;
+				mUnitTick = UnitTick >> 4;
 			}
 
 			if (時間単位_8分3連.Checked) {
-				mUnitTick = SMF.UnitTick / 3;
+				mUnitTick = UnitTick / 3;
 			}
 			if (時間単位_16分3連.Checked) {
-				mUnitTick = (SMF.UnitTick / 3) >> 1;
+				mUnitTick = (UnitTick / 3) >> 1;
 			}
 			if (時間単位_32分3連.Checked) {
-				mUnitTick = (SMF.UnitTick / 3) >> 2;
+				mUnitTick = (UnitTick / 3) >> 2;
 			}
 			if (時間単位_64分3連.Checked) {
-				mUnitTick = (SMF.UnitTick / 3) >> 3;
+				mUnitTick = (UnitTick / 3) >> 3;
 			}
 
 			if (時間単位_8分5連.Checked) {
-				mUnitTick = SMF.UnitTick / 5;
+				mUnitTick = UnitTick / 5;
 			}
 			if (時間単位_16分5連.Checked) {
-				mUnitTick = (SMF.UnitTick / 5) >> 1;
+				mUnitTick = (UnitTick / 5) >> 1;
 			}
 			if (時間単位_32分5連.Checked) {
-				mUnitTick = (SMF.UnitTick / 5) >> 2;
+				mUnitTick = (UnitTick / 5) >> 2;
 			}
 			if (時間単位_64分5連.Checked) {
-				mUnitTick = (SMF.UnitTick / 5) >> 3;
+				mUnitTick = (UnitTick / 5) >> 3;
 			}
 		}
 
 		private void 表示_Click(object sender, EventArgs e) {
 			if (表示_次の小節へ移動 == sender) {
+				var m = EventList.SelectLastMeasure(Hsb.Value);
+				if (Hsb.Value + m.Unit < Hsb.Maximum) {
+					Hsb.Value += m.Unit;
+				}
 				mUpdateScreen = true;
 			}
 			if (表示_前の小節へ移動 == sender) {
+				var m = EventList.SelectLastMeasure(Hsb.Value);
+				if (Hsb.Value - m.Unit < 0) {
+					Hsb.Value = 0;
+				} else {
+					Hsb.Value -= m.Unit;
+				}
 				mUpdateScreen = true;
 			}
 			if (表示_時間方向拡大 == sender) {
@@ -175,8 +186,19 @@ namespace EasySynth.Forms {
 		#endregion
 
 		#region フォームコントロールイベント
-		private void PianoRoll_KeyPress(object sender, KeyPressEventArgs e) {
-
+		private void PianoRoll_KeyDown(object sender, KeyEventArgs e) {
+			switch (e.KeyCode) {
+			case Keys.Right:
+				if (!(e.Control || e.Alt || e.Shift)) {
+					表示_次の小節へ移動.PerformClick();
+				}
+				break;
+			case Keys.Left:
+				if (!(e.Control || e.Alt || e.Shift)) {
+					表示_前の小節へ移動.PerformClick();
+				}
+				break;
+			}
 		}
 
 		private void PianoRoll_SizeChanged(object sender, EventArgs e) {
@@ -265,11 +287,11 @@ namespace EasySynth.Forms {
 		}
 
 		int TickToX(int tick) {
-			return KeyboardWidth + (tick - Hsb.Value) * mBaseTickWidth / SMF.UnitTick;
+			return KeyboardWidth + (tick - Hsb.Value) * mBaseTickWidth / UnitTick;
 		}
 
 		int XToTick(int x) {
-			var tick = (x - KeyboardWidth) * SMF.UnitTick / mBaseTickWidth + Hsb.Value;
+			var tick = (x - KeyboardWidth) * UnitTick / mBaseTickWidth + Hsb.Value;
 			return (int)((double)tick / mUnitTick) * mUnitTick;
 		}
 
@@ -442,6 +464,38 @@ namespace EasySynth.Forms {
 		void DrawNotes() {
 			var g = Graphics.FromImage(PicNote.Image);
 			g.Clear(Color.Transparent);
+			var startTick = XToTick(KeyboardWidth);
+			var endTick = XToTick(PicNote.Width);
+			var lastM = EventList.SelectLastMeasure(0);
+			var nextM = EventList.SelectNextMeasure(0);
+			var measure = 0;
+			for (int tickM = 0; tickM <= startTick; tickM += lastM.Unit) {
+				if (nextM != null && nextM.Tick <= tickM) {
+					lastM = nextM;
+					nextM = EventList.SelectNextMeasure(tickM);
+				}
+				measure++;
+			}
+			for (int tickM = startTick; tickM < endTick + lastM.Unit; tickM += lastM.Unit) {
+				for (int beat = 0, tickB = tickM; beat < lastM.Numerator; beat++, tickB += lastM.UnitBeat) {
+					var x = TickToX(tickB - (startTick % lastM.Unit));
+					if (x < KeyboardWidth) {
+						continue;
+					}
+					if (beat == 0) {
+						g.DrawLine(MeasureBorder, x, 0, x, PicNote.Height);
+						g.DrawString(measure + "", FontMeasure, Brushes.Black, new Rectangle(x, 0, 40, 19));
+						
+					} else {
+						g.DrawLine(BeatBorder, x, 0, x, PicNote.Height);
+					}
+				}
+				if (nextM != null && nextM.Tick <= tickM) {
+					lastM = nextM;
+					nextM = EventList.SelectNextMeasure(tickM);
+				}
+				measure++;
+			}
 			foreach (var ev in EventList.List) {
 				if (ev.Track == mEditTrack || ev.Selected) {
 					continue;
@@ -451,7 +505,7 @@ namespace EasySynth.Forms {
 				}
 			}
 			foreach (var ev in EventList.List) {
-				if (ev.MsgType != SMF.MSG.NOTE_ON || ev.Track != mEditTrack || ev.Selected) {
+				if (ev.MsgType != MSG.NOTE_ON || ev.Track != mEditTrack || ev.Selected) {
 					continue;
 				}
 				if (ev is Note note) {
@@ -459,7 +513,7 @@ namespace EasySynth.Forms {
 				}
 			}
 			foreach (var ev in EventList.List) {
-				if (ev.MsgType != SMF.MSG.NOTE_ON || !ev.Selected) {
+				if (ev.MsgType != MSG.NOTE_ON || !ev.Selected) {
 					continue;
 				}
 				if (ev is Note note) {
