@@ -1,61 +1,100 @@
 using System;
+using System.Runtime.InteropServices;
+using SMF;
+using static SMF.SMF;
 
 namespace Synth {
-	public enum BUFFER_TYPE {
+	public enum OUTPUT_TYPE {
 		I16,
 		I24,
-		I32,
 		F32
 	}
 
-	public class Synth {
-		public const int CHANNEL_COUNT = 256;
-		public const int SAMPLER_COUNT = 128;
+	public class Synth : IDisposable {
+		const int CHANNEL_COUNT = 256;
+		const int SAMPLER_COUNT = 128;
+		const int SPEC_BANK_COUNT = 114;
+		const int SPEC_OCT_DIV = 12;
+		const double SPEC_BASE_FREQ = 27.5;
+		const double SPEC_AMP_MIN = 1e-4; /* -80db */
 
-		public Spectrum Spectrum;
+		class Bank {
+			public readonly double KB0;
+			public readonly double KA1;
+			public readonly double KA2;
+			public readonly double FREQ;
 
+			public double Sigma;
+
+			public double Lb1;
+			public double Lb2;
+			public double La1;
+			public double La2;
+			public double LPower;
+
+			public double Rb1;
+			public double Rb2;
+			public double Ra1;
+			public double Ra2;
+			public double RPower;
+
+			public Bank(int sampleRate, double freq, double width) {
+				var omega = 2 * Math.PI * freq / sampleRate;
+				var s = Math.Sin(omega);
+				var alpha = s * Math.Sinh(Math.Log(2) / 2 * width * omega / s);
+				var ka0 = alpha + 1;
+				KB0 = alpha / ka0;
+				KA1 = 2 * Math.Cos(omega) / ka0;
+				KA2 = (1 - alpha) / ka0;
+				FREQ = freq;
+			}
+		}
+		Bank[] mBank = new Bank[SPEC_BANK_COUNT];
 		Channel[] mChannels = new Channel[CHANNEL_COUNT];
 		Sampler[] mSamplers = new Sampler[SAMPLER_COUNT];
 
+		int mSampleRate;
 		double mDeltaTime;
 		int mBufferSamples;
-		double[] mOutputBuffer;
-		double[] mSpecBuffer;
+		IntPtr mOutputBuffer;
+		IntPtr mSpecBuffer;
+		double[] mMuteData;
 
-		delegate void DWrite(IntPtr pBuffer);
-		DWrite mfpWrite;
+		delegate void DWrite(IntPtr output);
+		DWrite mfpWrite = (p) => { };
+
+		public double[] SpecL { get; private set; }
+		public double[] SpecR { get; private set; }
 
 		struct Int24 {
 			public byte lsb;
 			public ushort msb;
 		}
 
-		public Synth() {
-			mfpWrite = WriteNone;
+		public void Dispose() {
+			Marshal.FreeHGlobal(mOutputBuffer);
+			Marshal.FreeHGlobal(mSpecBuffer);
 		}
 
-		public void Setup(int sampleRate, int bufferSamples, BUFFER_TYPE bufferType) {
-			switch (bufferType) {
-			case BUFFER_TYPE.I16:
-				mfpWrite = Write16i;
+		public void Setup(int sampleRate, int bufferSamples, OUTPUT_TYPE outputType) {
+			switch (outputType) {
+			case OUTPUT_TYPE.I16:
+				mfpWrite = WriteI16;
 				break;
-			case BUFFER_TYPE.I24:
-				mfpWrite = Write24i;
+			case OUTPUT_TYPE.I24:
+				mfpWrite = WriteI24;
 				break;
-			case BUFFER_TYPE.I32:
-				mfpWrite = Write32i;
-				break;
-			case BUFFER_TYPE.F32:
-				mfpWrite = Write32f;
+			case OUTPUT_TYPE.F32:
+				mfpWrite = WriteF32;
 				break;
 			default:
-				mfpWrite = WriteNone;
+				mfpWrite = (p) => { };
 				return;
 			}
+			mSampleRate = sampleRate;
 			mDeltaTime = 1.0 / sampleRate;
 			mBufferSamples = bufferSamples;
-			mOutputBuffer = new double[bufferSamples * 2];
-			mSpecBuffer = new double[bufferSamples * 2];
+
 			for (int i = 0; i < CHANNEL_COUNT; i++) {
 				if (null == mChannels[i]) {
 					mChannels[i] = new Channel(i);
@@ -65,11 +104,20 @@ namespace Synth {
 			for (int i = 0; i < SAMPLER_COUNT; i++) {
 				mSamplers[i] = new Sampler();
 			}
-			Spectrum = new Spectrum(sampleRate, 114, 12, 27.5);
-		}
 
-		public void SetWaveTable(int channelNum, IntPtr pWaveTable) {
-			mChannels[channelNum].SetWaveTable(pWaveTable);
+			Marshal.FreeHGlobal(mOutputBuffer);
+			Marshal.FreeHGlobal(mSpecBuffer);
+			mOutputBuffer = Marshal.AllocHGlobal(sizeof(double) * bufferSamples * 2);
+			mSpecBuffer = Marshal.AllocHGlobal(sizeof(double) * bufferSamples * 2);
+			mMuteData = new double[bufferSamples * 2];
+
+			SpecL = new double[SPEC_BANK_COUNT];
+			SpecR = new double[SPEC_BANK_COUNT];
+			for (int b = 0; b < SPEC_BANK_COUNT; ++b) {
+				var freq = SPEC_BASE_FREQ * Math.Pow(2, (double)b / SPEC_OCT_DIV);
+				mBank[b] = new Bank(sampleRate, freq, 1.0 / SPEC_OCT_DIV);
+			}
+			SetSpectrumSpeed(20);
 		}
 
 		public Sampler.ID GetSamplerId(int index) {
@@ -80,27 +128,39 @@ namespace Synth {
 			return mChannels[index];
 		}
 
-		public void WriteBuffer(IntPtr pBuffer) {
+		public void SetSpectrumSpeed(double speed) {
+			for (int b = 0; b < SPEC_BANK_COUNT; ++b) {
+				var bank = mBank[b];
+				if (bank.FREQ < speed) {
+					bank.Sigma = bank.FREQ / mSampleRate;
+				}
+				else {
+					bank.Sigma = speed / mSampleRate;
+				}
+			}
+		}
+
+		public void WriteBuffer(IntPtr output) {
 			for (int i = 0; i < SAMPLER_COUNT; i++) {
 				if (Sampler.STATE.STANDBY != mSamplers[i].Id.State) {
 					mSamplers[i].WriteBuffer();
 				}
 			}
+			Marshal.Copy(mMuteData, 0, mSpecBuffer, mMuteData.Length);
 			for (int i = 0; i < CHANNEL_COUNT; i++) {
 				if (Channel.STATE.STANDBY != mChannels[i].State) {
 					mChannels[i].WriteBuffer(mOutputBuffer, mSpecBuffer);
 				}
 			}
-			Spectrum.Update(mSpecBuffer);
-			Array.Clear(mSpecBuffer, 0, mSpecBuffer.Length);
-			mfpWrite(pBuffer);
+			CalcSpectrum();
+			mfpWrite(output);
 		}
 
-		public void SendMessage(SMF.Event ev) {
+		public void SendMessage(Event ev) {
 			if (ev is Note note) {
 				var channel = mChannels[ev.Channel];
-				if (note.MsgType == SMF.MSG.NOTE_ON) {
-					if (channel.Mute) {
+				if (note.IsNoteOn) {
+					if (!channel.Enable) {
 						return;
 					}
 					for (int r = 0; r < channel.RegionCount; r++) {
@@ -123,25 +183,25 @@ namespace Synth {
 					}
 				}
 			}
-			if (ev is Ctrl ctrl) {
+			if (ev is CustomCtrl ctrl) {
 				var channel = mChannels[ev.Channel];
-				channel.CtrlChange((Ctrl.TYPE)ctrl.CtrlType, ctrl.CtrlValue);
-				switch ((Ctrl.TYPE)ctrl.CtrlType) {
-				case Ctrl.TYPE.HOLD:
-					if (ctrl.CtrlValue == 0) {
+				channel.CtrlChange(ctrl.CtrlType, ctrl.Value);
+				switch (ctrl.CtrlType) {
+				case CTRL.HOLD1:
+					if (ctrl.Value == 0) {
 						for (int i = 0; i < SAMPLER_COUNT; i++) {
 							mSamplers[i].HoldOff(channel);
 						}
 					}
 					break;
-				case Ctrl.TYPE.ALL_SOUND_OFF:
-				case Ctrl.TYPE.ALL_NOTE_OFF:
+				case CTRL.ALL_SOUND_OFF:
+				case CTRL.ALL_NOTE_OFF:
 					for (int i = 0; i < SAMPLER_COUNT; i++) {
 						mSamplers[i].PurgeChannelNotes(channel);
 					}
 					break;
-				case Ctrl.TYPE.MUTE:
-					if (ctrl.CtrlValue > 0) {
+				case CTRL.LOCAL_CTRL:
+					if (ctrl.Value == 0) {
 						for (int i = 0; i < SAMPLER_COUNT; i++) {
 							mSamplers[i].PurgeChannelNotes(channel);
 						}
@@ -149,63 +209,93 @@ namespace Synth {
 					break;
 				}
 			}
-		}
-
-		void WriteNone(IntPtr pBuffer) { }
-
-		unsafe void Write16i(IntPtr pBuffer) {
-			var buffer = (short*)pBuffer;
-			for (int i = 0, j = 0; i < mBufferSamples; i++, j += 2) {
-				var l = mOutputBuffer[j];
-				mOutputBuffer[j] = 0;
-				var r = mOutputBuffer[j + 1];
-				mOutputBuffer[j + 1] = 0;
-				l = (l < -1) ? -1 : (l > 1) ? 1 : l;
-				r = (r < -1) ? -1 : (r > 1) ? 1 : r;
-				buffer[j] = (short)(0x7FFF * l);
-				buffer[j + 1] = (short)(0x7FFF * r);
+			if (ev is Prog prog) {
+				mChannels[ev.Channel].ProgChange(prog.Number);
+			}
+			if (ev is Pitch pitch) {
+				mChannels[ev.Channel].PitchBend(pitch.Value);
 			}
 		}
 
-		unsafe void Write24i(IntPtr pBuffer) {
-			var buffer = (Int24*)pBuffer;
-			for (int i = 0, j = 0; i < mBufferSamples; i++, j += 2) {
-				var l = mOutputBuffer[j];
-				mOutputBuffer[j] = 0;
-				var r = mOutputBuffer[j + 1];
-				mOutputBuffer[j + 1] = 0;
+		unsafe void WriteI16(IntPtr output) {
+			var pInput = (double*)mOutputBuffer;
+			var pOutput = (short*)output;
+			for (int s = 0; s < mBufferSamples; ++s) {
+				var l = *pInput;
+				*pInput++ = 0;
+				var r = *pInput;
+				*pInput++ = 0;
+				l = (l < -1) ? -1 : (l > 1) ? 1 : l;
+				r = (r < -1) ? -1 : (r > 1) ? 1 : r;
+				*pOutput++ = (short)(0x7FFF * l);
+				*pOutput++ = (short)(0x7FFF * r);
+			}
+		}
+
+		unsafe void WriteI24(IntPtr output) {
+			var pInput = (double*)mOutputBuffer;
+			var pOutput = (Int24*)output;
+			for (int s = 0; s < mBufferSamples; ++s) {
+				var l = *pInput;
+				*pInput++ = 0;
+				var r = *pInput;
+				*pInput++ = 0;
 				l = (l < -1) ? -1 : (l > 1) ? 1 : l;
 				r = (r < -1) ? -1 : (r > 1) ? 1 : r;
 				var ul = (uint)(0x7FFFFFFF * l);
 				var ur = (uint)(0x7FFFFFFF * r);
-				buffer[j].lsb = (byte)((ul >> 8) & 0xFF);
-				buffer[j].msb = (ushort)(ul >> 16);
-				buffer[j + 1].lsb = (byte)((ur >> 8) & 0xFF);
-				buffer[j + 1].msb = (ushort)(ur >> 16);
+				pOutput->lsb = (byte)((ul >> 8) & 0xFF);
+				pOutput->msb = (ushort)(ul >> 16);
+				pOutput++;
+				pOutput->lsb = (byte)((ur >> 8) & 0xFF);
+				pOutput->msb = (ushort)(ur >> 16);
+				pOutput++;
 			}
 		}
 
-		unsafe void Write32i(IntPtr pBuffer) {
-			var buffer = (int*)pBuffer;
-			for (int i = 0, j = 0; i < mBufferSamples; i++, j += 2) {
-				var l = mOutputBuffer[j];
-				mOutputBuffer[j] = 0;
-				var r = mOutputBuffer[j + 1];
-				mOutputBuffer[j + 1] = 0;
-				l = (l < -1) ? -1 : (l > 1) ? 1 : l;
-				r = (r < -1) ? -1 : (r > 1) ? 1 : r;
-				buffer[j] = (int)(0x7FFFFFFF * l);
-				buffer[j + 1] = (int)(0x7FFFFFFF * r);
+		unsafe void WriteF32(IntPtr output) {
+			var pInput = (double*)mOutputBuffer;
+			var pOutput = (float*)output;
+			for (int s = 0; s < mBufferSamples; ++s) {
+				*pOutput++ = (float)*pInput;
+				*pInput++ = 0;
+				*pOutput++ = (float)*pInput;
+				*pInput++ = 0;
 			}
 		}
 
-		unsafe void Write32f(IntPtr pBuffer) {
-			var buffer = (float*)pBuffer;
-			for (int i = 0, j = 0; i < mBufferSamples; i++, j += 2) {
-				buffer[j] = (float)mOutputBuffer[j];
-				buffer[j + 1] = (float)mOutputBuffer[j + 1];
-				mOutputBuffer[j + 1] = 0;
-				mOutputBuffer[j + 1] = 0;
+		unsafe void CalcSpectrum() {
+			for (int b = 0; b < SPEC_BANK_COUNT; ++b) {
+				var pInput = (double*)mSpecBuffer;
+				var bank = mBank[b];
+				for (int s = 0; s < mBufferSamples; ++s) {
+					var lb0 = *pInput++;
+					var la0
+						= bank.KB0 * lb0
+						- bank.KB0 * bank.Lb2
+						- bank.KA1 * bank.La1
+						- bank.KA2 * bank.La2;
+					bank.Lb2 = bank.Lb1;
+					bank.Lb1 = lb0;
+					bank.La2 = bank.La1;
+					bank.La1 = la0;
+					bank.LPower += (la0 * la0 - bank.LPower) * bank.Sigma;
+					var rb0 = *pInput++;
+					var ra0
+						= bank.KB0 * rb0
+						- bank.KB0 * bank.Rb2
+						- bank.KA1 * bank.Ra1
+						- bank.KA2 * bank.Ra2;
+					bank.Rb2 = bank.Lb1;
+					bank.Rb1 = rb0;
+					bank.Ra2 = bank.La1;
+					bank.Ra1 = ra0;
+					bank.RPower += (ra0 * ra0 - bank.RPower) * bank.Sigma;
+				}
+				var lAmp = Math.Sqrt(mBank[b].LPower);
+				var rAmp = Math.Sqrt(mBank[b].RPower);
+				SpecL[b] = 20 * Math.Log10((lAmp < SPEC_AMP_MIN) ? SPEC_AMP_MIN : lAmp);
+				SpecR[b] = 20 * Math.Log10((rAmp < SPEC_AMP_MIN) ? SPEC_AMP_MIN : rAmp);
 			}
 		}
 	}

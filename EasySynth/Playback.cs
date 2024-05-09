@@ -12,20 +12,16 @@ namespace EasySynth {
 
 		public static void Open(int sampleRate, int bufferSamples) {
 			mInstance = new Playback(sampleRate, bufferSamples);
-			mSynth.Setup(sampleRate, bufferSamples, Synth.BUFFER_TYPE.F32);
-			mInstance.WaveOpen();
+			mSynth.Setup(sampleRate, bufferSamples, OUTPUT_TYPE.F32);
+			mInstance.OpenDevice();
 		}
 
 		public static void Close() {
-			mInstance.WaveClose();
+			mInstance.CloseDevice();
 		}
 
 		public static void SendMessage(SMF.Event message) {
 			mSynth.SendMessage(message);
-		}
-
-		public static Spectrum GetSpectrum() {
-			return mSynth.Spectrum;
 		}
 
 		protected override void WriteBuffer(IntPtr pBuffer) {

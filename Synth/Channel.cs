@@ -1,5 +1,6 @@
 using System;
 using Synth.Instruments;
+using SMF;
 
 namespace Synth {
 	public class Channel {
@@ -22,7 +23,7 @@ namespace Synth {
 
 		public STATE State { get; private set; }
 
-		public bool Mute { get; private set; }
+		public bool Enable { get; private set; }
 
 		public bool IsDrum { get; private set; }
 		public byte BankMsb { get; private set; }
@@ -37,8 +38,8 @@ namespace Synth {
 		public double Exp { get; private set; }
 		public double Pan { get; private set; }
 
-		public double VibRange { get; private set; }
 		public double VibDepth { get; private set; }
+		public double VibRange { get; private set; }
 		public double VibRate { get; private set; }
 		public double VibDelay { get; private set; }
 
@@ -59,8 +60,8 @@ namespace Synth {
 		public double PeakL { get; private set; }
 		public double PeakR { get; private set; }
 		public bool EnableSpectrum {
-			get { return mSpectrumGain > 0; }
-			set { mSpectrumGain = value ? 1 : 0; }
+			get { return mSpectrumSwitch > 0; }
+			set { mSpectrumSwitch = value ? 1 : 0; }
 		}
 		#endregion
 
@@ -92,7 +93,7 @@ namespace Synth {
 		double[] mDelBufferR;
 
 		double mGain;
-		double mSpectrumGain;
+		double mSpectrumSwitch;
 		#endregion
 
 		internal Channel(int num) {
@@ -133,81 +134,69 @@ namespace Synth {
 			}
 		}
 
-		internal void CtrlChange(Ctrl.TYPE type, double value) {
+		internal void CtrlChange(CTRL type, double value) {
 			switch (type) {
-			case Ctrl.TYPE.BANK_MSB:
+			case CTRL.BANK_MSB:
 				BankMsb = (byte)value;
 				break;
-			case Ctrl.TYPE.BANK_LSB:
+			case CTRL.BANK_LSB:
 				BankLsb = (byte)value;
 				break;
 
-			case Ctrl.TYPE.MOD:
-				VibDepth = VibRange * value;
+			case CTRL.MOD:
+				VibDepth = value;
 				break;
 
-			case Ctrl.TYPE.POLTA_TIME:
+			case CTRL.POLTA_TIME:
 				break;
-			case Ctrl.TYPE.POLTA_SWITCH:
+			case CTRL.POLTA_SWITCH:
 				break;
 
-			case Ctrl.TYPE.VOL:
+			case CTRL.VOL:
 				Vol = value;
 				break;
-			case Ctrl.TYPE.EXP:
+			case CTRL.PAN:
+				SetPan(value);
+				break;
+			case CTRL.EXP:
 				Exp = value;
 				break;
-			case Ctrl.TYPE.PAN:
-				Pan = value;
-				SetPan();
-				break;
 
-			case Ctrl.TYPE.HOLD:
+			case CTRL.HOLD1:
 				Hold = value > 0;
 				break;
 
-			case Ctrl.TYPE.RESONANCE:
+			case CTRL.RESONANCE:
 				Resonance = value;
 				break;
-			case Ctrl.TYPE.CUTOFF:
+			case CTRL.CUTOFF:
 				Cutoff = value;
 				break;
 
-			case Ctrl.TYPE.REV_SEND:
-				break;
-			case Ctrl.TYPE.CHO_SEND:
-				ChoSend = value;
-				break;
-			case Ctrl.TYPE.DEL_SEND:
-				DelSend = value;
-				break;
-
-			case Ctrl.TYPE.RESET_ALL_CTRL:
-				ResetCTRL();
-				break;
-
-			case Ctrl.TYPE.VIB_RANGE:
-				VibRange = value;
-				break;
-			case Ctrl.TYPE.VIB_RATE:
+			case CTRL.VIB_RATE:
 				VibRate = value;
 				break;
-			case Ctrl.TYPE.VIB_DELAY:
+			case CTRL.VIB_DEPTH:
+				VibRange = value;
+				break;
+			case CTRL.VIB_DELAY:
 				VibDelay = value;
 				break;
 
-			case Ctrl.TYPE.PROG_CHG:
-				ProgNum = (byte)((int)value & 0xFF);
-				IsDrum = value > 0xFF;
-				ProgChange();
+			case CTRL.REV_SEND:
+				break;
+			case CTRL.CHO_SEND:
+				ChoSend = value;
+				break;
+			case CTRL.DEL_SEND:
+				DelSend = value;
 				break;
 
-			case Ctrl.TYPE.PITCH:
-				Pitch = value;
+			case CTRL.RESET_ALL_CTRL:
+				ResetCTRL();
 				break;
-
-			case Ctrl.TYPE.MUTE:
-				Mute = value > 0;
+			case CTRL.LOCAL_CTRL:
+				Enable = value > 0;
 				break;
 
 			default:
@@ -215,7 +204,19 @@ namespace Synth {
 			}
 		}
 
-		internal void WriteBuffer(double[] pOut, double[] pSpec) {
+		internal void ProgChange(int number) {
+			ProgNum = (byte)(number & 0x7F);
+			IsDrum = number > 0x7F;
+		}
+
+		internal void PitchBend(int cent) {
+			//Pitch = cent;
+			Pitch = 1.0;
+		}
+
+		internal unsafe void WriteBuffer(IntPtr output, IntPtr spec) {
+			var pOutput = (double*)output;
+			var pSpec = (double*)spec;
 			for (int i = 0, j=0; i < BufferSamples; i++, j+=2) {
 				var outL = InputBufferL[i] * mGain;
 				InputBufferL[i] = 0;
@@ -292,10 +293,10 @@ namespace Synth {
 					outR += mixR * DelSend;
 				}
 				/* 出力 */
-				pOut[j] += outL;
-				pOut[j + 1] += outR;
-				pSpec[j] += outL * mSpectrumGain;
-				pSpec[j + 1] += outR * mSpectrumGain;
+				*pOutput++ += outL;
+				*pOutput++ += outR;
+				*pSpec++ += outL * mSpectrumSwitch;
+				*pSpec++ += outR * mSpectrumSwitch;
 				/* メーター */
 				{
 					RmsL += ((outL * outL) - RmsL) * RMS_SPEED * DeltaTime;
@@ -342,30 +343,27 @@ namespace Synth {
 		}
 
 		void Init() {
-			Mute = false;
+			Enable = true;
 
-			IsDrum = false;
 			BankMsb = 0;
 			BankLsb = 0;
-			ProgNum = 0;
-			ProgChange();
+			ProgChange(0);
 
 			Vol = 100 / 127.0;
 			Exp = 1;
 			mGain = Vol * Exp;
-			mSpectrumGain = 1;
-			Pan = 0;
-			SetPan();
+			mSpectrumSwitch = 1;
+			SetPan(0);
 
 			Hold = false;
 
 			Cutoff = 1;
 			Resonance = 0;
 
-			Pitch = 1;
+			PitchBend(0);
 
+			VibDepth = 0;
 			VibRange = 0.5;
-			VibDepth = VibRange;
 			VibRate = 4;
 			VibDelay = 1.0;
 
@@ -386,18 +384,15 @@ namespace Synth {
 		void ResetCTRL() {
 			Exp = 1;
 			Hold = false;
-			VibDepth = VibRange;
-			Pitch = 1;
+			VibDepth = 0;
+			PitchBend(0);
 		}
 
-		void SetPan() {
-			var th = 0.25 * Math.PI * Pan;
+		void SetPan(double pan) {
+			var th = 0.25 * Math.PI * pan;
 			PanRe = Math.Cos(th);
 			PanIm = Math.Sin(th);
-		}
-
-		void ProgChange() {
-
+			Pan = pan;
 		}
 	}
 }

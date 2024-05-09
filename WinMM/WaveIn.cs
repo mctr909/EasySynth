@@ -66,22 +66,48 @@ namespace WinMM {
 				var ret = waveInGetDevCaps(i, ref caps, Marshal.SizeOf(caps));
 				if (MMRESULT.MMSYSERR_NOERROR == ret) {
 					list.Add(caps.szPname);
-				} else {
+				}
+				else {
 					list.Add(ret.ToString());
 				}
 			}
 			return list;
 		}
 
-		public WaveIn(int sampleRate, int channels, BUFFER_TYPE bufferType, int bufferSize, int bufferCount) :
-			base(sampleRate, channels, bufferType, bufferSize, bufferCount) {
-			mCallback = Callback;
+		public WaveIn(int sampleRate, int channels, BUFFER_TYPE type, int bufferSamples, int bufferCount)
+			: base(sampleRate, channels, type, bufferSamples, bufferCount) {
+			mCallback = (hwi, uMsg, dwUser, lpWaveHdr, dwParam2) => {
+				switch (uMsg) {
+				case MM_WIM.OPEN:
+					AllocHeader();
+					Enabled = true;
+					break;
+				case MM_WIM.CLOSE:
+					DisposeHeader();
+					mHandle = IntPtr.Zero;
+					Enabled = false;
+					break;
+				case MM_WIM.DATA:
+					lock (mLockBuffer) {
+						if (mStop) {
+							break;
+						}
+						waveInAddBuffer(hwi, lpWaveHdr, Marshal.SizeOf<WAVEHDR>());
+						if (mProcessedBufferCount > 0) {
+							mProcessedBufferCount--;
+						}
+					}
+					break;
+				}
+			};
 		}
 
-		protected override void WaveOpen() {
-			WaveClose();
-			AllocHeader();
-			var mr = waveInOpen(ref mHandle, DeviceId, ref mWaveFormatEx, mCallback, IntPtr.Zero);
+		protected override void BufferTask() {
+			mStop = false;
+			mPause = false;
+			mBufferPaused = false;
+			mProcessedBufferCount = 0;
+			var mr = waveInOpen(ref mHandle, DeviceId, ref WaveFormatEx, mCallback, IntPtr.Zero);
 			if (MMRESULT.MMSYSERR_NOERROR != mr) {
 				return;
 			}
@@ -90,54 +116,39 @@ namespace WinMM {
 				waveInAddBuffer(mHandle, mpWaveHeader[i], Marshal.SizeOf<WAVEHDR>());
 			}
 			waveInStart(mHandle);
-		}
-
-		protected override void WaveClose() {
-			if (IntPtr.Zero == mHandle) {
-				return;
+			var readIndex = 0;
+			while (!mStop) {
+				var enableWait = false;
+				lock (mLockBuffer) {
+					if (mBufferCount <= mProcessedBufferCount + 1) {
+						enableWait = true;
+					}
+					else {
+						if (mPause) {
+							mBufferPaused = true;
+						}
+						else {
+							var header = Marshal.PtrToStructure<WAVEHDR>(mpWaveHeader[readIndex]);
+							ReadBuffer(header.lpData);
+							readIndex = (readIndex + 1) % mBufferCount;
+							mProcessedBufferCount++;
+						}
+					}
+				}
+				if (enableWait) {
+					Thread.Sleep(1);
+				}
 			}
-			mDoStop = true;
-			for (int i = 0; i < 20 && !mStopped; i++) {
-				Thread.Sleep(100);
-			}
+			waveInReset(mHandle);
 			for (int i = 0; i < mBufferCount; ++i) {
 				waveInUnprepareHeader(mpWaveHeader[i], mHandle, Marshal.SizeOf<WAVEHDR>());
 			}
-			var mr = waveInReset(mHandle);
-			if (MMRESULT.MMSYSERR_NOERROR != mr) {
-				throw new Exception(mr.ToString());
-			}
-			mr = waveInClose(mHandle);
-			if (MMRESULT.MMSYSERR_NOERROR != mr) {
-				throw new Exception(mr.ToString());
-			}
-			mHandle = IntPtr.Zero;
-			DisposeHeader();
-		}
-
-		void Callback(IntPtr hwi, MM_WIM uMsg, int dwUser, IntPtr lpWaveHdr, int dwParam2) {
-			switch (uMsg) {
-			case MM_WIM.OPEN:
-				mStopped = false;
-				Enabled = true;
-				break;
-			case MM_WIM.CLOSE:
-				mDoStop = false;
-				Enabled = false;
-				break;
-			case MM_WIM.DATA:
-				if (mDoStop) {
-					mStopped = true;
-					break;
-				}
-				var hdr = Marshal.PtrToStructure<WAVEHDR>(lpWaveHdr);
-				ReadBuffer(hdr.lpData);
-				waveInAddBuffer(mHandle, lpWaveHdr, Marshal.SizeOf<WAVEHDR>());
-				break;
+			waveInClose(mHandle);
+			for (int i = 0; i < 40 && Enabled; ++i) {
+				Thread.Sleep(50);
 			}
 		}
 
 		protected abstract void ReadBuffer(IntPtr pInput);
 	}
-
 }

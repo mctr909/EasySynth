@@ -96,12 +96,6 @@ namespace EasySynth.Forms
 			var g = Graphics.FromImage(pictureBox1.Image);
 			g.Clear(Color.Transparent);
 
-			var sp = Playback.GetSpectrum();
-			if (null == sp)
-			{
-				return;
-			}
-
 			pictureBox1.Image = pictureBox1.Image;
 		}
 

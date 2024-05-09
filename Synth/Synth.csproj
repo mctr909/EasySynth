@@ -9,9 +9,10 @@
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <RootNamespace>Synth</RootNamespace>
     <AssemblyName>Synth</AssemblyName>
-    <TargetFrameworkVersion>v4.8.1</TargetFrameworkVersion>
+    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <Deterministic>true</Deterministic>
+    <TargetFrameworkProfile />
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <DebugSymbols>true</DebugSymbols>
@@ -58,8 +59,16 @@
     <Reference Include="Microsoft.CSharp" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Event.cs" />
+    <Compile Include="Instruments\CK_ART.cs" />
+    <Compile Include="Instruments\CK_LAYER.cs" />
+    <Compile Include="Instruments\CK_PRESET.cs" />
+    <Compile Include="Instruments\CK_WAVE.cs" />
+    <Compile Include="Instruments\Editor.cs" />
+    <Compile Include="Instruments\Layer.cs" />
+    <Compile Include="Instruments\Loader.cs" />
+    <Compile Include="Instruments\Preset.cs" />
     <Compile Include="Instruments\Structs.cs" />
+    <Compile Include="Instruments\Wave.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Channel.cs" />
     <Compile Include="PITCH.cs" />
@@ -68,11 +77,14 @@
     <Compile Include="SamplerPCM.cs" />
     <Compile Include="SamplerPWM.cs" />
     <Compile Include="SamplerSAW.cs" />
-    <Compile Include="SMF.cs" />
-    <Compile Include="SMF.Defines.cs" />
-    <Compile Include="SMF.Event.cs" />
-    <Compile Include="Spectrum.cs" />
+    <Compile Include="CustomCtrl.cs" />
     <Compile Include="Synth.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\SMF\SMF.csproj">
+      <Project>{88c3e8bd-3191-450f-b456-232b9a01312c}</Project>
+      <Name>SMF</Name>
+    </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

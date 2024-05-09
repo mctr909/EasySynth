@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
-using Synth;
-using static Synth.SMF;
+using SMF;
 
 namespace EasySynth {
 	class EventList {
@@ -11,41 +10,20 @@ namespace EasySynth {
 
 		public static int LoadSmfEvent(string filePath) {
 			List.Clear();
-			var noteOnList = new List<SMF.Note>();
-			var events = new SMF(filePath).EventList;
+			var events = new SMF.SMF(filePath).EventList;
 			var lastTick = 0;
 			foreach (var ev in events) {
 				lastTick = Math.Max(lastTick, ev.Tick);
-				if (ev is SMF.Note note) {
-					if (note.MsgType == MSG.NOTE_ON) {
-						if (0 == note.Velocity) {
-							AddNote(note);
-						} else {
-							noteOnList.Add(note);
-						}
-					} else {
-						AddNote(note);
-					}
-				} else if (ev is SMF.Ctrl || ev is Prog || ev is Pitch) {
-					List.Add(new Synth.Ctrl(ev));
+				if (ev is Ctrl ctrl) {
+					List.Add(new CustomCtrl(ctrl.Data) {
+						Tick = ctrl.Tick,
+						Track = ctrl.Track
+					});
 				} else {
 					List.Add(ev);
 				}
 			}
 			return lastTick;
-			void AddNote(SMF.Note noteOff) {
-				var noteOn = noteOnList.Find(x => x.Track == noteOff.Track && x.Channel == noteOff.Channel && x.Tone == noteOff.Tone);
-				if (null == noteOn) {
-					return;
-				}
-				var note = new Synth.Note(noteOn.Tick, noteOff.Tick, noteOn.Tone, noteOn.Velocity) {
-					Track = noteOn.Track,
-					Channel = noteOn.Channel
-				};
-				List.Add(note);
-				List.Add(note.Pair);
-				noteOnList.Remove(noteOn);
-			}
 		}
 
 		public static void AddNote(int track, int channel, int start, int end, int tone, int velocity) {
@@ -60,31 +38,32 @@ namespace EasySynth {
 			}
 			var notes = SelectNotes(start, end, tone, tone, false, track);
 			foreach (var ev in notes) {
-				if (ev is Synth.Note n && end > n.Tick && (n.Tick >= start || n.End >= start)) {
+				if (ev is Note n && end > n.Tick && (n.Start >= start || n.End >= start)) {
 					end = n.Tick;
 				}
 			}
 			if (start >= end) {
 				return;
 			}
-			var note = new Synth.Note(start, end, tone, velocity) {
+			var note = new Note(start, end, tone, velocity) {
 				Track = track,
-				Channel = channel
+				Channel = (byte)channel
 			};
 			List.Add(note);
 			List.Add(note.Pair);
 			Updated = true;
 		}
 
-		public static void AddCtrl(int track, int channel, int tick, Synth.Ctrl.TYPE type, double value) {
+		public static void AddCtrl(int track, int channel, int tick, CTRL type, double value) {
 			if (tick < 0) {
 				return;
 			}
 			RemoveCtrls(tick, tick, type, track);
-			List.Add(new Synth.Ctrl(type, value) {
+			List.Add(new CustomCtrl(type) {
 				Tick = tick,
 				Track = track,
-				Channel = channel
+				Channel = (byte)channel,
+				Value = value
 			});
 			Updated = true;
 		}
@@ -95,7 +74,7 @@ namespace EasySynth {
 			}
 			var last = SelectLastMeasure(tick);
 			var elapse = tick - last.Tick;
-			if ((elapse % last.UnitTick) > 0) {
+			if ((elapse % last.Unit) > 0) {
 				return;
 			}
 			if (elapse <= 0) {
@@ -103,8 +82,7 @@ namespace EasySynth {
 				RemoveMetas(last.Tick, tick, META.KEY);
 			}
 			List.Add(new Measure(numerator, denominator) {
-				Tick = tick,
-				Track = -3
+				Tick = tick
 			});
 		}
 
@@ -114,13 +92,12 @@ namespace EasySynth {
 			}
 			var last = SelectLastMeasure(tick);
 			var elapse = tick - last.Tick;
-			if ((elapse % last.UnitTick) > 0) {
+			if ((elapse % last.Unit) > 0) {
 				return;
 			}
 			RemoveMetas(tick, tick, META.KEY);
 			List.Add(new Key(key) {
-				Tick = tick,
-				Track = -2
+				Tick = tick
 			});
 		}
 
@@ -130,42 +107,41 @@ namespace EasySynth {
 			}
 			RemoveMetas(tick, tick, META.TEMPO);
 			List.Add(new Tempo(tempo) {
-				Tick = tick,
-				Track = -1
+				Tick = tick
 			});
 			Updated = true;
 		}
 
 		public static void AddRange(List<Event> source, int offsetTick = 0, int offsetTone = 0) {
 			foreach (var ev in source) {
-				if (ev is Synth.Note note) {
+				if (ev is Note note) {
 					AddNote(ev.Track, ev.Channel, ev.Tick + offsetTick, note.Pair.Tick + offsetTick, note.Tone + offsetTone, note.Velocity);
 				}
-				if (ev is Synth.Ctrl ctrl) {
-					AddCtrl(ev.Track, ev.Channel, ev.Tick + offsetTick, (Synth.Ctrl.TYPE)ctrl.CtrlType, ctrl.CtrlValue);
+				if (ev is CustomCtrl ctrl) {
+					AddCtrl(ev.Track, ev.Channel, ev.Tick + offsetTick, ctrl.CtrlType, ctrl.Value);
 				}
 			}
 		}
 
 		public static void RemoveNotes(int start, int end, int minTone, int maxTone, params int[] tracks) {
 			List.RemoveAll(v => {
-				if (v is Synth.Note note && note.Contains(start, end, minTone, maxTone, tracks)) {
+				if (v is Note note && note.Contains(start, end, minTone, maxTone, tracks)) {
 					note.Pair.Pair = null;
 					return true;
 				}
 				return false;
 			});
-			List.RemoveAll(v => v is Synth.Note note && note.MsgType == MSG.NOTE_OFF && note.Pair == null);
+			List.RemoveAll(v => v is Note note && note.MsgType == MSG.NOTE_OFF && note.Pair == null);
 			Updated = true;
 		}
 
-		public static void RemoveCtrls(int start, int end, Synth.Ctrl.TYPE type, params int[] tracks) {
-			List.RemoveAll(v => v is Synth.Ctrl ctrl && ctrl.Contains(start, end, type, tracks));
+		public static void RemoveCtrls(int start, int end, CTRL type, params int[] tracks) {
+			List.RemoveAll(v => v is CustomCtrl ctrl && ctrl.Contains(type, start, end, tracks));
 			Updated = true;
 		}
 
 		public static void RemoveMetas(int start, int end, META type) {
-			List.RemoveAll(v => v.MsgType == MSG.META && v.MetaType == type && v.Tick >= start && v.Tick <= end);
+			List.RemoveAll(v => v is Meta meta && meta.Contains(type, start, end));
 			Updated = type == META.TEMPO;
 		}
 
@@ -175,7 +151,7 @@ namespace EasySynth {
 
 		public static List<Event> SelectNotes(int start, int end, int minTone, int maxTone, bool setFlag, params int[] tracks) {
 			return List.FindAll(v => {
-				if (v is Synth.Note note && note.Contains(start, end, minTone, maxTone, tracks)) {
+				if (v is Note note && note.Contains(start, end, minTone, maxTone, tracks)) {
 					if (setFlag) {
 						v.Selected = !v.Selected;
 					}
@@ -185,9 +161,9 @@ namespace EasySynth {
 			});
 		}
 
-		public static List<Event> SelectCtrls(int start, int end, Synth.Ctrl.TYPE type, bool setFlag, params int[] tracks) {
+		public static List<Event> SelectCtrls(int start, int end, CTRL type, bool setFlag, params int[] tracks) {
 			return List.FindAll(v => {
-				if (v is Synth.Ctrl ctrl && ctrl.Contains(start, end, type, tracks)) {
+				if (v is CustomCtrl ctrl && ctrl.Contains(type, start, end, tracks)) {
 					if (setFlag) {
 						v.Selected = !v.Selected;
 					}
@@ -199,7 +175,7 @@ namespace EasySynth {
 
 		public static List<Event> SelectMetas(int start, int end, META type, bool setFlag) {
 			return List.FindAll(v => {
-				if (v.MsgType == MSG.META && v.MetaType == type && v.Tick >= start && v.Tick <= end) {
+				if (v is Meta meta && meta.Contains(type, start, end)) {
 					if (setFlag) {
 						v.Selected = !v.Selected;
 					}
@@ -216,6 +192,10 @@ namespace EasySynth {
 			} else {
 				return (Measure)ev;
 			}
+		}
+
+		public static Measure SelectNextMeasure(int tick) {
+			return (Measure)List.Find(v => v is Measure && v.Tick > tick);
 		}
 
 		public static Queue<Event> GetQueue(int start = 0) {

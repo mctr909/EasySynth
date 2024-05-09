@@ -39,7 +39,7 @@ namespace EasySynth.Forms {
 
 		public static void SetColor() {
 			var cMeasureBorder = Color.FromArgb(0, 0, 0);
-			var cBeatBorder = Color.FromArgb(0, 0, 0);
+			var cBeatBorder = Color.FromArgb(167, 167, 131);
 			var cOctBorder = Color.FromArgb(0, 0, 0);
 
 			var cCtrlBackground = Color.FromArgb(191, 255, 255, 255);
