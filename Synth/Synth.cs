@@ -1,4 +1,5 @@
 using System;
+using static SMF;
 
 namespace Synth {
 	public enum BUFFER_TYPE {
@@ -96,11 +97,11 @@ namespace Synth {
 			mfpWrite(pBuffer);
 		}
 
-		public void SendMessage(SMF.Event ev) {
+		public void SendMessage(Event ev) {
 			if (ev is Note note) {
 				var channel = mChannels[ev.Channel];
-				if (note.MsgType == SMF.MSG.NOTE_ON) {
-					if (channel.Mute) {
+				if (note.IsNoteOn) {
+					if (!channel.Enable) {
 						return;
 					}
 					for (int r = 0; r < channel.RegionCount; r++) {
@@ -123,31 +124,37 @@ namespace Synth {
 					}
 				}
 			}
-			if (ev is Ctrl ctrl) {
+			if (ev is CustomCtrl ctrl) {
 				var channel = mChannels[ev.Channel];
-				channel.CtrlChange((Ctrl.TYPE)ctrl.CtrlType, ctrl.CtrlValue);
-				switch ((Ctrl.TYPE)ctrl.CtrlType) {
-				case Ctrl.TYPE.HOLD:
-					if (ctrl.CtrlValue == 0) {
+				channel.CtrlChange(ctrl.CtrlType, ctrl.Value);
+				switch (ctrl.CtrlType) {
+				case CTRL.HOLD1:
+					if (ctrl.Value == 0) {
 						for (int i = 0; i < SAMPLER_COUNT; i++) {
 							mSamplers[i].HoldOff(channel);
 						}
 					}
 					break;
-				case Ctrl.TYPE.ALL_SOUND_OFF:
-				case Ctrl.TYPE.ALL_NOTE_OFF:
+				case CTRL.ALL_SOUND_OFF:
+				case CTRL.ALL_NOTE_OFF:
 					for (int i = 0; i < SAMPLER_COUNT; i++) {
 						mSamplers[i].PurgeChannelNotes(channel);
 					}
 					break;
-				case Ctrl.TYPE.MUTE:
-					if (ctrl.CtrlValue > 0) {
+				case CTRL.LOCAL_CTRL:
+					if (ctrl.Value == 0) {
 						for (int i = 0; i < SAMPLER_COUNT; i++) {
 							mSamplers[i].PurgeChannelNotes(channel);
 						}
 					}
 					break;
 				}
+			}
+			if (ev is Prog prog) {
+				mChannels[ev.Channel].ProgChange(prog.Number);
+			}
+			if (ev is Pitch pitch) {
+				mChannels[ev.Channel].PitchBend(pitch.Value);
 			}
 		}
 

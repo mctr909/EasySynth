@@ -136,8 +136,9 @@ namespace EasySynth.Forms
 			this.Vsb.Maximum = 127;
 			this.Vsb.Name = "Vsb";
 			this.Vsb.Size = new System.Drawing.Size(17, 195);
-			this.Vsb.TabIndex = 2;
 			this.Vsb.Value = 60;
+			this.Vsb.SmallChange = 0;
+			this.Vsb.TabStop = false;
 			this.Vsb.Scroll += new System.Windows.Forms.ScrollEventHandler(this.Vsb_Scroll);
 			// 
 			// Hsb
@@ -147,8 +148,8 @@ namespace EasySynth.Forms
 			this.Hsb.Maximum = 96000;
 			this.Hsb.Name = "Hsb";
 			this.Hsb.Size = new System.Drawing.Size(202, 17);
-			this.Hsb.SmallChange = 240;
-			this.Hsb.TabIndex = 3;
+			this.Hsb.SmallChange = 0;
+			this.Hsb.TabStop = false;
 			this.Hsb.Scroll += new System.Windows.Forms.ScrollEventHandler(this.Hsb_Scroll);
 			// 
 			// 編集
@@ -742,7 +743,7 @@ namespace EasySynth.Forms
 			this.Name = "PianoRoll";
 			this.Text = "Form1";
 			this.SizeChanged += new System.EventHandler(this.PianoRoll_SizeChanged);
-			this.KeyPress += new System.Windows.Forms.KeyPressEventHandler(this.PianoRoll_KeyPress);
+			this.KeyDown += new System.Windows.Forms.KeyEventHandler(this.PianoRoll_KeyDown);
 			((System.ComponentModel.ISupportInitialize)(this.PicNote)).EndInit();
 			((System.ComponentModel.ISupportInitialize)(this.PicInput)).EndInit();
 			this.MenuStrip1.ResumeLayout(false);

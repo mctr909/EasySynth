@@ -89,7 +89,7 @@
 				mPanL = (mPanL < 0) ? 0 : (mPanL > 1) ? 1 : mPanL;
 				mPanR = (mPanR < 0) ? 0 : (mPanR > 1) ? 1 : mPanR;
 				/* ビブラート更新 */
-				mVibDepth += (mChannel.VibDepth - mVibDepth) * mDeltaTime4 / mChannel.VibDelay;
+				mVibDepth += (mChannel.VibDepth * mChannel.VibRange - mVibDepth) * mDeltaTime4 / mChannel.VibDelay;
 				var vibK = 1.570796 * mChannel.VibRate * mDeltaTime4;
 				mVibRe -= mVibIm * vibK;
 				mVibIm += mVibRe * vibK;

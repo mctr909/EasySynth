@@ -22,7 +22,7 @@ namespace Synth {
 
 		public STATE State { get; private set; }
 
-		public bool Mute { get; private set; }
+		public bool Enable { get; private set; }
 
 		public bool IsDrum { get; private set; }
 		public byte BankMsb { get; private set; }
@@ -37,8 +37,8 @@ namespace Synth {
 		public double Exp { get; private set; }
 		public double Pan { get; private set; }
 
-		public double VibRange { get; private set; }
 		public double VibDepth { get; private set; }
+		public double VibRange { get; private set; }
 		public double VibRate { get; private set; }
 		public double VibDelay { get; private set; }
 
@@ -133,86 +133,84 @@ namespace Synth {
 			}
 		}
 
-		internal void CtrlChange(Ctrl.TYPE type, double value) {
+		internal void CtrlChange(SMF.CTRL type, double value) {
 			switch (type) {
-			case Ctrl.TYPE.BANK_MSB:
+			case SMF.CTRL.BANK_MSB:
 				BankMsb = (byte)value;
 				break;
-			case Ctrl.TYPE.BANK_LSB:
+			case SMF.CTRL.BANK_LSB:
 				BankLsb = (byte)value;
 				break;
 
-			case Ctrl.TYPE.MOD:
-				VibDepth = VibRange * value;
+			case SMF.CTRL.MOD:
+				VibDepth = value;
 				break;
 
-			case Ctrl.TYPE.POLTA_TIME:
+			case SMF.CTRL.POLTA_TIME:
 				break;
-			case Ctrl.TYPE.POLTA_SWITCH:
+			case SMF.CTRL.POLTA_SWITCH:
 				break;
 
-			case Ctrl.TYPE.VOL:
+			case SMF.CTRL.VOL:
 				Vol = value;
 				break;
-			case Ctrl.TYPE.EXP:
+			case SMF.CTRL.PAN:
+				SetPan(value);
+				break;
+			case SMF.CTRL.EXP:
 				Exp = value;
 				break;
-			case Ctrl.TYPE.PAN:
-				Pan = value;
-				SetPan();
-				break;
 
-			case Ctrl.TYPE.HOLD:
+			case SMF.CTRL.HOLD1:
 				Hold = value > 0;
 				break;
 
-			case Ctrl.TYPE.RESONANCE:
+			case SMF.CTRL.RESONANCE:
 				Resonance = value;
 				break;
-			case Ctrl.TYPE.CUTOFF:
+			case SMF.CTRL.CUTOFF:
 				Cutoff = value;
 				break;
 
-			case Ctrl.TYPE.REV_SEND:
-				break;
-			case Ctrl.TYPE.CHO_SEND:
-				ChoSend = value;
-				break;
-			case Ctrl.TYPE.DEL_SEND:
-				DelSend = value;
-				break;
-
-			case Ctrl.TYPE.RESET_ALL_CTRL:
-				ResetCTRL();
-				break;
-
-			case Ctrl.TYPE.VIB_RANGE:
-				VibRange = value;
-				break;
-			case Ctrl.TYPE.VIB_RATE:
+			case SMF.CTRL.VIB_RATE:
 				VibRate = value;
 				break;
-			case Ctrl.TYPE.VIB_DELAY:
+			case SMF.CTRL.VIB_DEPTH:
+				VibRange = value;
+				break;
+			case SMF.CTRL.VIB_DELAY:
 				VibDelay = value;
 				break;
 
-			case Ctrl.TYPE.PROG_CHG:
-				ProgNum = (byte)((int)value & 0xFF);
-				IsDrum = value > 0xFF;
-				ProgChange();
+			case SMF.CTRL.REV_SEND:
+				break;
+			case SMF.CTRL.CHO_SEND:
+				ChoSend = value;
+				break;
+			case SMF.CTRL.DEL_SEND:
+				DelSend = value;
 				break;
 
-			case Ctrl.TYPE.PITCH:
-				Pitch = value;
+			case SMF.CTRL.RESET_ALL_CTRL:
+				ResetCTRL();
 				break;
-
-			case Ctrl.TYPE.MUTE:
-				Mute = value > 0;
+			case SMF.CTRL.LOCAL_CTRL:
+				Enable = value > 0;
 				break;
 
 			default:
 				break;
 			}
+		}
+
+		internal void ProgChange(int number) {
+			ProgNum = (byte)(number & 0x7F);
+			IsDrum = number > 0x7F;
+		}
+
+		internal void PitchBend(int cent) {
+			//Pitch = cent;
+			Pitch = 1.0;
 		}
 
 		internal void WriteBuffer(double[] pOut, double[] pSpec) {
@@ -342,30 +340,27 @@ namespace Synth {
 		}
 
 		void Init() {
-			Mute = false;
+			Enable = true;
 
-			IsDrum = false;
 			BankMsb = 0;
 			BankLsb = 0;
-			ProgNum = 0;
-			ProgChange();
+			ProgChange(0);
 
 			Vol = 100 / 127.0;
 			Exp = 1;
 			mGain = Vol * Exp;
 			mSpectrumGain = 1;
-			Pan = 0;
-			SetPan();
+			SetPan(0);
 
 			Hold = false;
 
 			Cutoff = 1;
 			Resonance = 0;
 
-			Pitch = 1;
+			PitchBend(0);
 
+			VibDepth = 0;
 			VibRange = 0.5;
-			VibDepth = VibRange;
 			VibRate = 4;
 			VibDelay = 1.0;
 
@@ -386,18 +381,15 @@ namespace Synth {
 		void ResetCTRL() {
 			Exp = 1;
 			Hold = false;
-			VibDepth = VibRange;
-			Pitch = 1;
+			VibDepth = 0;
+			PitchBend(0);
 		}
 
-		void SetPan() {
-			var th = 0.25 * Math.PI * Pan;
+		void SetPan(double pan) {
+			var th = 0.25 * Math.PI * pan;
 			PanRe = Math.Cos(th);
 			PanIm = Math.Sin(th);
-		}
-
-		void ProgChange() {
-
+			Pan = pan;
 		}
 	}
 }
