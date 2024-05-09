@@ -133,80 +133,80 @@ namespace Synth {
 			}
 		}
 
-		internal void CtrlChange(Event.CTRL type, float value) {
+		internal void CtrlChange(Ctrl.TYPE type, double value) {
 			switch (type) {
-			case Event.CTRL.BANK_MSB:
+			case Ctrl.TYPE.BANK_MSB:
 				BankMsb = (byte)value;
 				break;
-			case Event.CTRL.BANK_LSB:
+			case Ctrl.TYPE.BANK_LSB:
 				BankLsb = (byte)value;
 				break;
 
-			case Event.CTRL.MOD:
+			case Ctrl.TYPE.MOD:
 				VibDepth = VibRange * value;
 				break;
 
-			case Event.CTRL.POLTA_TIME:
+			case Ctrl.TYPE.POLTA_TIME:
 				break;
-			case Event.CTRL.POLTA_SWITCH:
+			case Ctrl.TYPE.POLTA_SWITCH:
 				break;
 
-			case Event.CTRL.VOL:
+			case Ctrl.TYPE.VOL:
 				Vol = value;
 				break;
-			case Event.CTRL.EXP:
+			case Ctrl.TYPE.EXP:
 				Exp = value;
 				break;
-			case Event.CTRL.PAN:
+			case Ctrl.TYPE.PAN:
 				Pan = value;
 				SetPan();
 				break;
 
-			case Event.CTRL.HOLD:
+			case Ctrl.TYPE.HOLD:
 				Hold = value > 0;
 				break;
 
-			case Event.CTRL.RESONANCE:
+			case Ctrl.TYPE.RESONANCE:
 				Resonance = value;
 				break;
-			case Event.CTRL.CUTOFF:
+			case Ctrl.TYPE.CUTOFF:
 				Cutoff = value;
 				break;
 
-			case Event.CTRL.REV_SEND:
+			case Ctrl.TYPE.REV_SEND:
 				break;
-			case Event.CTRL.CHO_SEND:
+			case Ctrl.TYPE.CHO_SEND:
 				ChoSend = value;
 				break;
-			case Event.CTRL.DEL_SEND:
+			case Ctrl.TYPE.DEL_SEND:
 				DelSend = value;
 				break;
 
-			case Event.CTRL.RESET_ALL_CTRL:
+			case Ctrl.TYPE.RESET_ALL_CTRL:
 				ResetCTRL();
 				break;
 
-			case Event.CTRL.VIB_RANGE:
+			case Ctrl.TYPE.VIB_RANGE:
 				VibRange = value;
 				break;
-			case Event.CTRL.VIB_RATE:
+			case Ctrl.TYPE.VIB_RATE:
 				VibRate = value;
 				break;
-			case Event.CTRL.VIB_DELAY:
+			case Ctrl.TYPE.VIB_DELAY:
 				VibDelay = value;
 				break;
 
-			case Event.CTRL.PROG_CHG:
+			case Ctrl.TYPE.PROG_CHG:
 				ProgNum = (byte)((int)value & 0xFF);
 				IsDrum = value > 0xFF;
 				ProgChange();
 				break;
 
-			case Event.CTRL.PITCH:
+			case Ctrl.TYPE.PITCH:
 				Pitch = value;
 				break;
 
-			case Event.CTRL.MUTE:
+			case Ctrl.TYPE.MUTE:
 				Mute = value > 0;
 				break;
 

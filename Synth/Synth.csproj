@@ -68,6 +68,9 @@
     <Compile Include="SamplerPCM.cs" />
     <Compile Include="SamplerPWM.cs" />
     <Compile Include="SamplerSAW.cs" />
+    <Compile Include="SMF.cs" />
+    <Compile Include="SMF.Defines.cs" />
+    <Compile Include="SMF.Event.cs" />
     <Compile Include="Spectrum.cs" />
     <Compile Include="Synth.cs" />
   </ItemGroup>

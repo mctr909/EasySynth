@@ -74,20 +74,20 @@ namespace EasySynth.Forms {
 			BlackKeyBorderT = new Pen(SetLA(cBlackKey, 1.00, 1));
 			BlackKeyBorderB = new Pen(SetLA(cBlackKey, 0.75, 1));
 			EditableNote = new Pen(cEditableNote).Brush;
-			EditableNoteBorderT = new Pen(SetLA(cEditableNote, 2.5, 1));
-			EditableNoteBorderB = new Pen(SetLA(cEditableNote, 0.5, 1));
+			EditableNoteBorderT = new Pen(SetLA(cEditableNote, 2.0, 1));
+			EditableNoteBorderB = new Pen(SetLA(cEditableNote, 0.8, 1));
 			EditableNoteBorderR = new Pen(SetLA(cEditableNote, 1.2, 1));
 			GrippedNote = new Pen(SetLA(cEditableNote, 2.0, 0.5)).Brush;
-			GrippedNoteBorderT = new Pen(SetLA(cEditableNote, 2.5, 0.5));
+			GrippedNoteBorderT = new Pen(SetLA(cEditableNote, 2.0, 0.5));
 			GrippedNoteBorderB = new Pen(SetLA(cEditableNote, 0.5, 0.5));
 			GrippedNoteBorderR = new Pen(SetLA(cEditableNote, 1.2, 0.5));
 			SelectedNote = new Pen(cSelectedNote).Brush;
-			SelectedNoteBorderT = new Pen(SetLA(cSelectedNote, 1.5, 1));
-			SelectedNoteBorderB = new Pen(SetLA(cSelectedNote, 0.5, 1));
+			SelectedNoteBorderT = new Pen(SetLA(cSelectedNote, 1.25, 1));
+			SelectedNoteBorderB = new Pen(SetLA(cSelectedNote, 0.8, 1));
 			SelectedNoteBorderR = new Pen(SetLA(cSelectedNote, 1.1, 1));
 			ReadonlyNote = new Pen(cReadonlyNote).Brush;
 			ReadonlyNoteBorderT = new Pen(SetLA(cReadonlyNote, 1.5, 1));
-			ReadonlyNoteBorderB = new Pen(SetLA(cReadonlyNote, 0.75, 1));
+			ReadonlyNoteBorderB = new Pen(SetLA(cReadonlyNote, 0.8, 1));
 			ReadonlyNoteBorderR = new Pen(SetLA(cReadonlyNote, 1.1, 1));
 		}
 

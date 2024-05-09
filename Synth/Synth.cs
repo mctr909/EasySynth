@@ -96,63 +96,58 @@ namespace Synth {
 			mfpWrite(pBuffer);
 		}
 
-		public void SendMessage(Event message) {
-			if (message.Type == Event.TYPE.META) {
-				return;
-			}
-			var channel = mChannels[message.Channel];
-			switch (message.Type) {
-			case Event.TYPE.NOTE_OFF:
-				for (int i = 0; i < SAMPLER_COUNT; i++) {
-					mSamplers[i].NoteOff(channel, message.Tone);
-				}
-				break;
-			case Event.TYPE.NOTE_ON:
-				if (channel.Mute) {
-					break;
-				}
-				for (int r = 0; r < channel.RegionCount; r++) {
-					var region = channel.Regions[r];
-					if (message.Tone < region.KeyLow || region.KeyHigh < message.Tone ||
-						message.Value < region.VeloLow || region.VeloHigh < message.Value
-					) {
-						continue;
+		public void SendMessage(SMF.Event ev) {
+			if (ev is Note note) {
+				var channel = mChannels[ev.Channel];
+				if (note.MsgType == SMF.MSG.NOTE_ON) {
+					if (channel.Mute) {
+						return;
 					}
-					for (int i = 0; i < SAMPLER_COUNT; i++) {
-						if (mSamplers[i].NoteOn(channel, region, message.Tone, (int)message.Value)) {
-							channel.NoteOn();
-							break;
+					for (int r = 0; r < channel.RegionCount; r++) {
+						var region = channel.Regions[r];
+						if (note.Tone < region.KeyLow || region.KeyHigh < note.Tone ||
+							note.Velocity < region.VeloLow || region.VeloHigh < note.Velocity
+						) {
+							continue;
+						}
+						for (int i = 0; i < SAMPLER_COUNT; i++) {
+							if (mSamplers[i].NoteOn(channel, region, note.Tone, note.Velocity)) {
+								channel.NoteOn();
+								break;
+							}
 						}
 					}
+				} else {
+					for (int i = 0; i < SAMPLER_COUNT; i++) {
+						mSamplers[i].NoteOff(channel, note.Tone);
+					}
 				}
-				break;
-			case Event.TYPE.CTRL_CHG:
-				channel.CtrlChange(message.CtrlType, message.Value);
-				switch (message.CtrlType) {
-				case Event.CTRL.HOLD:
-					if (message.Value == 0) {
+			}
+			if (ev is Ctrl ctrl) {
+				var channel = mChannels[ev.Channel];
+				channel.CtrlChange((Ctrl.TYPE)ctrl.CtrlType, ctrl.CtrlValue);
+				switch ((Ctrl.TYPE)ctrl.CtrlType) {
+				case Ctrl.TYPE.HOLD:
+					if (ctrl.CtrlValue == 0) {
 						for (int i = 0; i < SAMPLER_COUNT; i++) {
 							mSamplers[i].HoldOff(channel);
 						}
 					}
 					break;
-				case Event.CTRL.ALL_SOUND_OFF:
-				case Event.CTRL.ALL_NOTE_OFF:
+				case Ctrl.TYPE.ALL_SOUND_OFF:
+				case Ctrl.TYPE.ALL_NOTE_OFF:
 					for (int i = 0; i < SAMPLER_COUNT; i++) {
 						mSamplers[i].PurgeChannelNotes(channel);
 					}
 					break;
-				case Event.CTRL.MUTE:
-					if (message.Value > 0) {
+				case Ctrl.TYPE.MUTE:
+					if (ctrl.CtrlValue > 0) {
 						for (int i = 0; i < SAMPLER_COUNT; i++) {
 							mSamplers[i].PurgeChannelNotes(channel);
 						}
 					}
 					break;
 				}
-				break;
-			default:
-				break;
 			}
 		}
 

@@ -11,6 +11,8 @@ namespace EasySynth.Forms {
 			LineAlignment = StringAlignment.Center
 		};
 
+		const int KeyboardWidth = 32;
+
 		bool mChangeSize = true;
 		bool mChangeEditTarget = false;
 		bool mScrollTone = true;
@@ -71,42 +73,42 @@ namespace EasySynth.Forms {
 			}
 
 			if (時間単位_8分.Checked) {
-				mUnitTick = Event.BASE_TICK >> 1;
+				mUnitTick = SMF.UnitTick >> 1;
 			}
 			if (時間単位_16分.Checked) {
-				mUnitTick = Event.BASE_TICK >> 2;
+				mUnitTick = SMF.UnitTick >> 2;
 			}
 			if (時間単位_32分.Checked) {
-				mUnitTick = Event.BASE_TICK >> 3;
+				mUnitTick = SMF.UnitTick >> 3;
 			}
 			if (時間単位_64分.Checked) {
-				mUnitTick = Event.BASE_TICK >> 4;
+				mUnitTick = SMF.UnitTick >> 4;
 			}
 
 			if (時間単位_8分3連.Checked) {
-				mUnitTick = Event.BASE_TICK / 3;
+				mUnitTick = SMF.UnitTick / 3;
 			}
 			if (時間単位_16分3連.Checked) {
-				mUnitTick = (Event.BASE_TICK / 3) >> 1;
+				mUnitTick = (SMF.UnitTick / 3) >> 1;
 			}
 			if (時間単位_32分3連.Checked) {
-				mUnitTick = (Event.BASE_TICK / 3) >> 2;
+				mUnitTick = (SMF.UnitTick / 3) >> 2;
 			}
 			if (時間単位_64分3連.Checked) {
-				mUnitTick = (Event.BASE_TICK / 3) >> 3;
+				mUnitTick = (SMF.UnitTick / 3) >> 3;
 			}
 
 			if (時間単位_8分5連.Checked) {
-				mUnitTick = Event.BASE_TICK / 5;
+				mUnitTick = SMF.UnitTick / 5;
 			}
 			if (時間単位_16分5連.Checked) {
-				mUnitTick = (Event.BASE_TICK / 5) >> 1;
+				mUnitTick = (SMF.UnitTick / 5) >> 1;
 			}
 			if (時間単位_32分5連.Checked) {
-				mUnitTick = (Event.BASE_TICK / 5) >> 2;
+				mUnitTick = (SMF.UnitTick / 5) >> 2;
 			}
 			if (時間単位_64分5連.Checked) {
-				mUnitTick = (Event.BASE_TICK / 5) >> 3;
+				mUnitTick = (SMF.UnitTick / 5) >> 3;
 			}
 		}
 
@@ -263,11 +265,11 @@ namespace EasySynth.Forms {
 		}
 
 		int TickToX(int tick) {
-			return (tick - Hsb.Value) * mBaseTickWidth / Event.BASE_TICK;
+			return KeyboardWidth + (tick - Hsb.Value) * mBaseTickWidth / SMF.UnitTick;
 		}
 
 		int XToTick(int x) {
-			var tick = x * Event.BASE_TICK / mBaseTickWidth + Hsb.Value;
+			var tick = (x - KeyboardWidth) * SMF.UnitTick / mBaseTickWidth + Hsb.Value;
 			return (int)((double)tick / mUnitTick) * mUnitTick;
 		}
 
@@ -413,6 +415,8 @@ namespace EasySynth.Forms {
 				g.Clear(CtrlBackground);
 			}
 
+			g.DrawLine(MeasureBorder, KeyboardWidth, 0, KeyboardWidth, PicNote.Height);
+
 			if (編集対象_アクセント.Checked) {
 				var min = -18;
 				for (int db = -1; db > min; db--) {
@@ -439,22 +443,28 @@ namespace EasySynth.Forms {
 			var g = Graphics.FromImage(PicNote.Image);
 			g.Clear(Color.Transparent);
 			foreach (var ev in EventList.List) {
-				if (ev.Type != Event.TYPE.NOTE_ON || ev.Track == mEditTrack || ev.Selected) {
+				if (ev.Track == mEditTrack || ev.Selected) {
 					continue;
 				}
-				DrawNote(g, NoteType.READONLY, TickToX(ev.Tick), TickToX(ev.TickEnd), ev.Tone);
+				if (ev is Note note) {
+					DrawNote(g, NoteType.READONLY, TickToX(ev.Tick), TickToX(note.End), note.Tone);
+				}
 			}
 			foreach (var ev in EventList.List) {
-				if (ev.Type != Event.TYPE.NOTE_ON || ev.Track != mEditTrack || ev.Selected) {
+				if (ev.MsgType != SMF.MSG.NOTE_ON || ev.Track != mEditTrack || ev.Selected) {
 					continue;
 				}
-				DrawNote(g, NoteType.EDITABLE, TickToX(ev.Tick), TickToX(ev.TickEnd), ev.Tone);
+				if (ev is Note note) {
+					DrawNote(g, NoteType.EDITABLE, TickToX(ev.Tick), TickToX(note.End), note.Tone);
+				}
 			}
 			foreach (var ev in EventList.List) {
-				if (ev.Type != Event.TYPE.NOTE_ON || !ev.Selected) {
+				if (ev.MsgType != SMF.MSG.NOTE_ON || !ev.Selected) {
 					continue;
 				}
-				DrawNote(g, NoteType.SELECTED, TickToX(ev.Tick), TickToX(ev.TickEnd), ev.Tone);
+				if (ev is Note note) {
+					DrawNote(g, NoteType.SELECTED, TickToX(ev.Tick), TickToX(note.End), note.Tone);
+				}
 			}
 			PicNote.Image = PicNote.Image;
 		}
@@ -463,17 +473,19 @@ namespace EasySynth.Forms {
 			var g = Graphics.FromImage(PicInput.Image);
 			g.Clear(Color.Transparent);
 			var notes = EventList.SelectNotes(Hsb.Value, XToTick(Hsb.Width), 0, 127, false, mEditTrack);
-			foreach (var note in notes) {
-				var a = TickToX(note.Tick);
-				var b = TickToX(note.TickEnd);
-				if (b >= PicInput.Width) {
-					b = PicInput.Width - 1;
+			foreach (var ev in notes) {
+				if (ev is Note note && note.IsNoteOn) {
+					var a = TickToX(note.Tick);
+					var b = TickToX(note.End);
+					if (b >= PicInput.Width) {
+						b = PicInput.Width - 1;
+					}
+					var db = 20 * Math.Log10(note.Velocity / 127.0);
+					var y = (int)(-PicInput.Height * 0.5 * (int)(db * 2) / 18.0);
+					g.FillRectangle(CtrlValueSolid, a + 1, y, b - a - 1, PicInput.Height - y);
+					g.DrawLine(CtrlValueLeft, a, PicInput.Height, a, y);
+					g.DrawLine(CtrlValueTop, a + 1, y, b, y);
 				}
-				var db = 20 * Math.Log10(note.Value / 127.0);
-				var y = (int)(-PicInput.Height * 0.5 * (int)(db * 2) / 18.0);
-				g.FillRectangle(CtrlValueSolid, a + 1, y, b - a - 1, PicInput.Height - y);
-				g.DrawLine(CtrlValueLeft, a, PicInput.Height, a, y);
-				g.DrawLine(CtrlValueTop, a + 1, y, b, y);
 			}
 			PicInput.Image = PicInput.Image;
 		}

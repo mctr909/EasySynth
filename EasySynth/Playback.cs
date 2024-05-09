@@ -20,7 +20,7 @@ namespace EasySynth {
 			mInstance.WaveClose();
 		}
 
-		public static void SendMessage(Synth.Event message) {
+		public static void SendMessage(SMF.Event message) {
 			mSynth.SendMessage(message);
 		}
 
